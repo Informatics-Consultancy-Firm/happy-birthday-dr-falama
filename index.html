@@ -270,6 +270,8 @@ body{
 
 /* caption */
 .caption.hide{display:none}
+.caption.nocap p{display:none}
+.caption.nocap{padding:40px 26px 20px; background:linear-gradient(180deg,transparent,rgba(4,17,13,.78))}
 .caption{
   position:absolute;
   left:0; right:0; bottom:0;
@@ -308,6 +310,44 @@ body{
   background:#000;
 }
 .slide.is-active video{animation:none}
+
+/* the YouTube slide */
+.ytwrap{
+  width:100%;
+  max-width:900px;
+  margin:0 auto;
+  padding:0 12px;
+  aspect-ratio:16/9;
+}
+.ytwrap iframe{width:100%; height:100%; border:0; display:block; border-radius:4px}
+.slide.is-yt{align-items:center}
+
+/* shown when the player cannot run, offline or opened as a file */
+.yt-fallback{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+  text-align:center;
+  padding:0 28px;
+}
+.yt-fallback p{
+  font-family:'Fraunces',Georgia,serif;
+  font-size:1.1rem;
+  color:var(--cream);
+  max-width:22em;
+}
+.yt-link{
+  display:inline-block;
+  font-family:'Karla',sans-serif;
+  font-weight:600;
+  font-size:1rem;
+  color:var(--ink);
+  background:var(--gold);
+  border-radius:999px;
+  padding:13px 28px;
+  text-decoration:none;
+}
 
 /* closing card from ICF-SL */
 .endcard{
@@ -513,6 +553,7 @@ body{
    1. SETTINGS — change these two lines after you upload photos
    ============================================================ */
 const SLIDE_TIME = 6000;           // milliseconds per photo
+const SHOW_CAPTIONS = true;        // set to false to hide the captions
 
 /* YOUR VIDEOS. They play after the photos, in this order.
    Two ways to add one:
@@ -522,6 +563,19 @@ const SLIDE_TIME = 6000;           // milliseconds per photo
 const EMBEDDED_VIDEOS = [
   // 'clip1.mp4',
 ];
+
+/* Play the traditional birthday tune once when the tribute opens,
+   before the background music starts. Set to false to skip it. */
+const BIRTHDAY_INTRO = true;
+
+/* BACKGROUND SONG. Put an audio file beside this page (music.mp3,
+   music.m4a, anything) and it plays under the whole slideshow, on a
+   loop, instead of the built in music. Any audio file in the folder
+   is picked up on its own; this name is just the first thing tried. */
+const MUSIC_FILE = 'music.mp3';
+
+/* A YouTube song, played as a slide near the end. Put '' to drop it. */
+const YT_VIDEO_ID = 'NBB8qDQAf_o';
 
 /* Captions for the videos, in the same order. */
 const VIDEO_CAPTIONS = [
@@ -645,8 +699,9 @@ function repoInfo(){
 async function loadImages(){
   const picExt = ['.jpg','.jpeg','.png','.gif','.webp','.avif'];
   const vidExt = ['.mp4','.webm','.m4v','.mov','.ogv'];
+  const audExt = ['.mp3','.m4a','.aac','.ogg','.oga','.wav','.flac'];
   const info = repoInfo();
-  let extraPics = [], extraVids = [];
+  let extraPics = [], extraVids = [], foundSong = '';
 
   if(info){
     try{
@@ -669,6 +724,7 @@ async function loadImages(){
             const link = encodeURIComponent(f.name);
             if(picExt.indexOf(ext) !== -1) extraPics.push(link);
             else if(vidExt.indexOf(ext) !== -1) extraVids.push(link);
+            else if(audExt.indexOf(ext) !== -1 && !foundSong) foundSong = link;
           });
         }
       }
@@ -687,6 +743,7 @@ async function loadImages(){
     items.push({kind:'video', src:src, caption:VIDEO_CAPTIONS[i % VIDEO_CAPTIONS.length]});
   });
   items.push({kind:'card'});
+  if(YT_VIDEO_ID) items.push({kind:'youtube'});
 
   if(images.length){
     portrait.src = images[0];
@@ -696,8 +753,26 @@ async function loadImages(){
     };
   }
 
+  prepareSong(foundSong || MUSIC_FILE);
+
   buildSlides();
   loading.style.display = 'none';
+}
+
+function addDot(i){
+  const dot = document.createElement('button');
+  dot.className = 'dot';
+  dot.setAttribute('aria-label', 'Slide ' + (i + 1));
+  dot.addEventListener('click', function(){ goTo(i); });
+  dotsWrap.appendChild(dot);
+}
+
+function ytFallbackHTML(){
+  return '<div class="yt-fallback">' +
+           '<p>The song is waiting for you on YouTube</p>' +
+           '<a class="yt-link" target="_blank" rel="noopener" ' +
+             'href="https://www.youtube.com/watch?v=' + YT_VIDEO_ID + '">Open the song</a>' +
+         '</div>';
 }
 
 function buildSlides(){
@@ -724,6 +799,25 @@ function buildSlides(){
       v.controls = true;
       slide.appendChild(v);
 
+    }else if(item.kind === 'youtube'){
+      slide.classList.add('is-yt');
+      if(location.protocol === 'file:'){
+        /* YouTube will not play to a page with no web address */
+        slide.innerHTML = ytFallbackHTML();
+        stage.insertBefore(slide, loading);
+        addDot(i);
+        return;
+      }
+      slide.innerHTML =
+        '<div class="ytwrap">' +
+          '<iframe id="ytHost" width="560" height="315" ' +
+            'src="https://www.youtube.com/embed/' + YT_VIDEO_ID +
+              '?enablejsapi=1&playsinline=1&rel=0&modestbranding=1" ' +
+            'title="YouTube video player" frameborder="0" ' +
+            'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ' +
+            'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>' +
+        '</div>';
+
     }else{
       slide.classList.add('is-card');
       slide.innerHTML =
@@ -737,11 +831,7 @@ function buildSlides(){
 
     stage.insertBefore(slide, loading);
 
-    const dot = document.createElement('button');
-    dot.className = 'dot';
-    dot.setAttribute('aria-label', 'Slide ' + (i + 1));
-    (function(n){ dot.addEventListener('click', function(){ goTo(n); }); })(i);
-    dotsWrap.appendChild(dot);
+    addDot(i);
   });
 
   goTo(0);
@@ -750,11 +840,51 @@ function buildSlides(){
 /* ============================================================
    4. SLIDESHOW CONTROL
    ============================================================ */
+let ytPlayer = null;
+
+function loadYouTube(){
+  if(!YT_VIDEO_ID || document.getElementById('yt-api')) return;
+  const t = document.createElement('script');
+  t.id  = 'yt-api';
+  t.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(t);
+}
+
+let ytWantsPlay = false;
+
+function ytPlay(){
+  if(ytPlayer && ytPlayer.playVideo){
+    try{ ytPlayer.playVideo(); ytWantsPlay = false; return; }catch(e){}
+  }
+  ytWantsPlay = true;          // the player is not built yet, so try again on ready
+}
+
+window.onYouTubeIframeAPIReady = function(){
+  if(!document.getElementById('ytHost')) return;
+  ytPlayer = new YT.Player('ytHost', {
+    events: {
+      onReady: function(){
+        if(ytWantsPlay) ytPlay();
+      },
+      onError: function(){
+        const slide = stage.querySelector('.slide.is-yt');
+        if(slide) slide.innerHTML = ytFallbackHTML();
+      },
+      onStateChange: function(e){
+        /* the song is the last thing, so let it rest when it ends */
+        if(e.data === YT.PlayerState.ENDED && index < items.length - 1) goTo(index + 1);
+      }
+    }
+  });
+};
+
 function stopAllVideos(){
   stage.querySelectorAll('video').forEach(function(v){
     v.pause();
     try{ v.currentTime = 0; }catch(e){}
   });
+  ytWantsPlay = false;
+  if(ytPlayer && ytPlayer.pauseVideo) { try{ ytPlayer.pauseVideo(); }catch(e){} }
 }
 
 function goTo(i){
@@ -782,6 +912,8 @@ function goTo(i){
   const item = items[index] || {};
   const capWrap = document.querySelector('.caption');
 
+  capWrap.classList.toggle('nocap', !SHOW_CAPTIONS);
+
   if(item.kind === 'card'){
     capWrap.classList.add('hide');
   }else{
@@ -792,6 +924,17 @@ function goTo(i){
     captionText.style.animation = '';
   }
   counter.textContent = (index + 1) + ' of ' + slides.length;
+
+  if(item.kind === 'youtube'){
+    /* the song runs the slide, so the clock and our own music step aside */
+    clearTimeout(timer);
+    cancelAnimationFrame(raf);
+    bar.style.width = '0%';
+    stopMusic();
+    capWrap.classList.add('hide');
+    ytPlay();
+    return;
+  }
 
   if(item.kind === 'video'){
     /* the video sets the pace, so the clock and the music step aside */
@@ -810,25 +953,34 @@ function goTo(i){
   }
 
   if(item.kind === 'card'){
-    /* the tribute finishes here */
     clearTimeout(timer);
     cancelAnimationFrame(raf);
-    bar.style.width = '100%';
-    playing = false;
-    pauseBtn.textContent = 'Play';
     startMusic();
+
+    if(index < items.length - 1){
+      /* hold on the thank you, then let the song close the tribute */
+      bar.style.width = '0%';
+      const held = index;
+      timer = setTimeout(function(){ if(index === held) goTo(index + 1); }, 10000);
+    }else{
+      bar.style.width = '100%';
+      playing = false;
+      pauseBtn.textContent = 'Play';
+    }
     return;
   }
 
-  startMusic();
+  if(!introRunning) startMusic();
   restartTimer();
 }
+
+function isOpen(){ return show.classList.contains('open'); }
 
 function restartTimer(){
   clearTimeout(timer);
   cancelAnimationFrame(raf);
   bar.style.width = '0%';
-  if(!playing) return;
+  if(!playing || !isOpen()) return;
 
   const start = performance.now();
   function step(now){
@@ -859,10 +1011,11 @@ function openShow(){
   pauseBtn.textContent = 'Pause';
   goTo(0);
   dropPetals();
-  startMusic();
+  fanfare();
 }
 
 function closeShow(){
+  introRunning = false;
   show.classList.remove('open');
   document.body.style.overflow = '';
   clearTimeout(timer);
@@ -891,122 +1044,325 @@ function dropPetals(){
 }
 
 /* ============================================================
-   6. BACKGROUND MUSIC (generated, no audio file needed)
-      Warm pad + gentle kalimba pattern in E major pentatonic.
+   6. BACKGROUND MUSIC
+      An original piece generated in the browser, so there is no
+      file to load and no licence attached to it. Warm chords with
+      a bell melody over the top, eight bars, looping gently.
    ============================================================ */
-let ctx = null, master = null, padGain = null, seqTimer = null, muted = false;
+let ctx = null, master = null, delayNode = null, muted = false;
+let schedTimer = null, nextBarAt = 0, barCount = 0;
 
-function startMusic(){
-  if(muted) return;
-  try{
-    if(!ctx){
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC) return;
-      ctx = new AC();
+const BPM  = 72;
+const BEAT = 60 / BPM;
+const BAR  = BEAT * 4;
 
-      master = ctx.createGain();
-      master.gain.value = 0;
-      master.connect(ctx.destination);
+/* the eight bar progression: root note and the chord tones above it */
+const PROG = [
+  {bass: 73.42, chord: [293.66, 369.99, 440.00]},   // D
+  {bass:110.00, chord: [277.18, 329.63, 440.00]},   // A
+  {bass:123.47, chord: [246.94, 293.66, 369.99]},   // Bm
+  {bass: 98.00, chord: [246.94, 293.66, 392.00]},   // G
+  {bass: 73.42, chord: [293.66, 369.99, 440.00]},   // D
+  {bass:110.00, chord: [277.18, 329.63, 440.00]},   // A
+  {bass: 98.00, chord: [246.94, 293.66, 392.00]},   // G
+  {bass:110.00, chord: [277.18, 329.63, 440.00]}    // A
+];
 
-      /* a short feedback delay gives the plucks some air */
-      const delay = ctx.createDelay(1.0);
-      delay.delayTime.value = 0.36;
-      const fb = ctx.createGain();
-      fb.gain.value = 0.28;
-      const wet = ctx.createGain();
-      wet.gain.value = 0.32;
-      delay.connect(fb); fb.connect(delay);
-      delay.connect(wet); wet.connect(master);
-      ctx.delayNode = delay;
+/* the melody, one list per bar: [beat within the bar, pitch, length in beats] */
+const TUNE = [
+  [[0, 739.99, 1.5], [2, 659.25, 1.0], [3, 587.33, 1.0]],
+  [[0, 659.25, 2.0], [2.5, 554.37, 1.5]],
+  [[0, 587.33, 1.0], [1, 739.99, 1.5], [2.5, 659.25, 1.5]],
+  [[0, 587.33, 2.0], [2, 493.88, 2.0]],
+  [[0, 739.99, 1.0], [1, 880.00, 1.5], [2.5, 739.99, 1.5]],
+  [[0, 659.25, 2.0], [2, 554.37, 2.0]],
+  [[0, 493.88, 1.0], [1, 587.33, 1.0], [2, 659.25, 2.0]],
+  [[0, 554.37, 2.0], [2, 440.00, 2.0]]
+];
 
-      /* soft sustained pad */
-      padGain = ctx.createGain();
-      padGain.gain.value = 0.055;
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 780;
-      padGain.connect(filter);
-      filter.connect(master);
+function buildAudio(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if(!AC) return false;
+  ctx = new AC();
 
-      [82.41, 123.47, 164.81, 207.65].forEach(function(f, i){
-        const o = ctx.createOscillator();
-        o.type = i % 2 ? 'sine' : 'triangle';
-        o.frequency.value = f;
-        o.detune.value = (i - 1.5) * 5;
-        const g = ctx.createGain();
-        g.gain.value = 0.25;
-        o.connect(g); g.connect(padGain);
-        o.start();
-      });
+  master = ctx.createGain();
+  master.gain.value = 0;
+  master.connect(ctx.destination);
 
-      /* slow breathing on the pad */
-      const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.07;
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.022;
-      lfo.connect(lfoGain);
-      lfoGain.connect(padGain.gain);
-      lfo.start();
-    }
-
-    if(ctx.state === 'suspended') ctx.resume();
-    master.gain.cancelScheduledValues(ctx.currentTime);
-    master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
-    master.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 2.5);
-
-    playSequence();
-  }catch(e){ console.warn('Audio unavailable', e); }
+  /* a little echo so the melody has some air around it */
+  delayNode = ctx.createDelay(1.0);
+  delayNode.delayTime.value = BEAT * 0.75;
+  const fb = ctx.createGain();  fb.gain.value = 0.3;
+  const wet = ctx.createGain(); wet.gain.value = 0.3;
+  delayNode.connect(fb); fb.connect(delayNode);
+  delayNode.connect(wet); wet.connect(master);
+  return true;
 }
 
-/* E major pentatonic, two octaves */
-const SCALE = [329.63, 369.99, 415.30, 493.88, 554.37, 659.25, 739.99, 830.61, 987.77];
-let step = 0;
-
-function pluck(freq, when, level){
+/* soft sustained chord voice */
+function padNote(freq, at, len, level){
   const o = ctx.createOscillator();
-  o.type = 'triangle';
-  o.frequency.setValueAtTime(freq, when);
-
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, when);
-  g.gain.linearRampToValueAtTime(level, when + 0.012);
-  g.gain.exponentialRampToValueAtTime(0.0001, when + 2.1);
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(freq, at);
+  o.detune.setValueAtTime((Math.random() * 8) - 4, at);
 
   const f = ctx.createBiquadFilter();
   f.type = 'lowpass';
-  f.frequency.setValueAtTime(2600, when);
-  f.frequency.exponentialRampToValueAtTime(700, when + 1.4);
+  f.frequency.setValueAtTime(620, at);
+  f.Q.value = 0.6;
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(level, at + 0.5);
+  g.gain.setValueAtTime(level, at + len - 0.5);
+  g.gain.linearRampToValueAtTime(0, at + len);
+
+  o.connect(f); f.connect(g); g.connect(master);
+  o.start(at); o.stop(at + len + 0.05);
+}
+
+/* low root underneath */
+function bassNote(freq, at, len){
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq, at);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(0.11, at + 0.08);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+
+  o.connect(g); g.connect(master);
+  o.start(at); o.stop(at + len + 0.05);
+}
+
+/* plucked chord tone, kalimba flavoured */
+function pluck(freq, at, level){
+  const o = ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(freq, at);
+
+  const f = ctx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(2400, at);
+  f.frequency.exponentialRampToValueAtTime(650, at + 1.1);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(level, at + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 1.6);
 
   o.connect(f); f.connect(g);
   g.connect(master);
-  if(ctx.delayNode) g.connect(ctx.delayNode);
-
-  o.start(when);
-  o.stop(when + 2.3);
+  if(delayNode) g.connect(delayNode);
+  o.start(at); o.stop(at + 1.8);
 }
 
-function playSequence(){
-  clearInterval(seqTimer);
-  const beat = 0.62;
-  seqTimer = setInterval(function(){
-    if(!ctx || ctx.state !== 'running') return;
-    const t = ctx.currentTime + 0.05;
-    /* a rolling figure that wanders up and down the scale */
-    const a = SCALE[step % SCALE.length];
-    const b = SCALE[(step * 3 + 2) % SCALE.length];
-    pluck(a, t, 0.16);
-    pluck(b, t + beat / 2, 0.10);
-    if(step % 4 === 0) pluck(SCALE[0] / 2, t, 0.13);
-    step++;
-  }, beat * 1000 * 2);
+/* the melody voice, a bell with a touch of shimmer */
+function bell(freq, at, len){
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(freq, at);
+
+  /* a quiet octave above gives it the bell edge */
+  const o2 = ctx.createOscillator();
+  o2.type = 'sine';
+  o2.frequency.setValueAtTime(freq * 2, at);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0, at);
+  g2.gain.linearRampToValueAtTime(0.035, at + 0.02);
+  g2.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(0.15, at + 0.03);
+  g.gain.setValueAtTime(0.15, at + len * 0.55);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + len + 0.5);
+
+  o.connect(g); g.connect(master);
+  o2.connect(g2); g2.connect(master);
+  if(delayNode){ g.connect(delayNode); }
+
+  o.start(at);  o.stop(at + len + 0.6);
+  o2.start(at); o2.stop(at + 1.0);
+}
+
+function scheduleBar(n, at){
+  const step = PROG[n % PROG.length];
+
+  step.chord.forEach(function(f){ padNote(f, at, BAR, 0.045); });
+  bassNote(step.bass, at, BAR * 0.9);
+
+  /* rolling quavers through the chord */
+  const pattern = [0, 1, 2, 1, 0, 1, 2, 1];
+  pattern.forEach(function(pick, i){
+    pluck(step.chord[pick], at + i * BEAT * 0.5, i % 2 ? 0.05 : 0.085);
+  });
+
+  TUNE[n % TUNE.length].forEach(function(note){
+    bell(note[1], at + note[0] * BEAT, note[2] * BEAT);
+  });
+}
+
+let songEl = null, songReady = false, fadeTimer = null, introRunning = false;
+
+function prepareSong(src){
+  if(!src) return;
+  songEl = new Audio();
+  songEl.src = src;
+  songEl.loop = true;
+  songEl.preload = 'auto';
+  songEl.volume = 0;
+  songEl.addEventListener('canplay', function(){ songReady = true; });
+  songEl.addEventListener('error', function(){ songReady = false; songEl = null; });
+}
+
+function fadeSong(to, ms){
+  clearInterval(fadeTimer);
+  if(!songEl) return;
+  const from = songEl.volume;
+  const steps = Math.max(1, Math.round(ms / 50));
+  let n = 0;
+  fadeTimer = setInterval(function(){
+    n++;
+    const v = from + (to - from) * (n / steps);
+    try{ songEl.volume = Math.min(1, Math.max(0, v)); }catch(e){}
+    if(n >= steps) clearInterval(fadeTimer);
+  }, 50);
+}
+
+function tick(){
+  if(!ctx || ctx.state !== 'running') return;
+
+  /* if the tab was asleep, pick up from now instead of racing to catch up */
+  if(nextBarAt < ctx.currentTime - 1) nextBarAt = ctx.currentTime + 0.1;
+
+  while(nextBarAt < ctx.currentTime + 0.4){
+    scheduleBar(barCount, nextBarAt);
+    nextBarAt += BAR;
+    barCount++;
+  }
+}
+
+function startGenerated(){
+  if(muted) return;
+  if(!show.classList.contains('open')) return;   // only once the tribute is open
+
+  try{
+    if(!ctx && !buildAudio()) return;
+
+    const run = function(){
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
+      master.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 2.0);
+
+      if(!schedTimer){
+        nextBarAt = ctx.currentTime + 0.15;
+        schedTimer = setInterval(tick, 30);
+        tick();
+      }
+    };
+
+    if(ctx.state === 'suspended'){
+      const p = ctx.resume();
+      if(p && p.then) p.then(run, run); else run();
+    }else{
+      run();
+    }
+  }catch(e){ console.warn('Audio unavailable', e); }
+}
+
+/* ---- the traditional birthday melody, played in bells ----
+   The tune is old enough to be free of copyright, and it is
+   generated here rather than loaded, so there is no file at all. */
+const HB_BEAT = 0.62;
+
+/* pitch, length in beats. Four phrases of six beats, in D. */
+const HB_TUNE = [
+  [440.00,0.5],[440.00,0.5],[493.88,1],[440.00,1],[587.33,1],[554.37,2],
+  [440.00,0.5],[440.00,0.5],[493.88,1],[440.00,1],[659.25,1],[587.33,2],
+  [440.00,0.5],[440.00,0.5],[880.00,1],[739.99,1],[587.33,1],[554.37,2],
+  [783.99,0.5],[783.99,0.5],[739.99,1],[587.33,1],[659.25,1],[587.33,3]
+];
+
+/* a chord every two beats underneath */
+const HB_CHORDS = [
+  {b: 73.42, c:[293.66,369.99,440.00]}, {b: 73.42, c:[293.66,369.99,440.00]},
+  {b:110.00, c:[277.18,329.63,440.00]}, {b:110.00, c:[277.18,329.63,440.00]},
+  {b:110.00, c:[277.18,329.63,440.00]}, {b: 73.42, c:[293.66,369.99,440.00]},
+  {b: 73.42, c:[293.66,369.99,440.00]}, {b: 73.42, c:[293.66,369.99,440.00]},
+  {b: 98.00, c:[246.94,293.66,392.00]}, {b: 98.00, c:[246.94,293.66,392.00]},
+  {b:110.00, c:[277.18,329.63,440.00]}, {b: 73.42, c:[293.66,369.99,440.00]}
+];
+
+function playBirthday(){
+  const t0 = ctx.currentTime + 0.45;
+
+  HB_CHORDS.forEach(function(step, i){
+    const at = t0 + i * 2 * HB_BEAT;
+    step.c.forEach(function(f){ padNote(f, at, 2 * HB_BEAT, 0.04); });
+    bassNote(step.b, at, 2 * HB_BEAT * 0.9);
+  });
+
+  let t = t0;
+  HB_TUNE.forEach(function(n){
+    bell(n[0], t, n[1] * HB_BEAT * 0.92);
+    t += n[1] * HB_BEAT;
+  });
+
+  return (t - ctx.currentTime) + 0.9;   // seconds until it has rung out
+}
+
+function fanfare(){
+  if(muted || !BIRTHDAY_INTRO){ startMusic(); return; }
+  try{
+    if(!ctx && !buildAudio()){ startMusic(); return; }
+
+    const go = function(){
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(0.85, ctx.currentTime);
+      const len = playBirthday();
+      introRunning = true;
+      setTimeout(function(){ introRunning = false; startMusic(); }, len * 1000);
+    };
+
+    if(ctx.state === 'suspended'){
+      const p = ctx.resume();
+      if(p && p.then) p.then(go, go); else go();
+    }else{
+      go();
+    }
+  }catch(e){ startMusic(); }
+}
+
+function startMusic(){
+  if(muted) return;
+  if(!show.classList.contains('open')) return;
+
+  if(songReady && songEl){
+    const p = songEl.play();
+    if(p && p.catch) p.catch(function(){ startGenerated(); });
+    fadeSong(0.55, 2000);
+    return;
+  }
+  startGenerated();
 }
 
 function stopMusic(){
+  if(songEl && !songEl.paused){
+    fadeSong(0, 700);
+    setTimeout(function(){ if(songEl && songEl.volume < 0.02) songEl.pause(); }, 780);
+  }
+  stopGenerated();
+}
+
+function stopGenerated(){
+  clearInterval(schedTimer);
+  schedTimer = null;
   if(!ctx || !master) return;
   master.gain.cancelScheduledValues(ctx.currentTime);
   master.gain.setValueAtTime(master.gain.value, ctx.currentTime);
-  master.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.7);
-  clearInterval(seqTimer);
+  master.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
 }
 
 /* ============================================================
@@ -1049,6 +1405,7 @@ document.addEventListener('visibilitychange', function(){
   }
 });
 
+loadYouTube();
 loadImages();
 
 })();
